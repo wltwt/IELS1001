@@ -3,6 +3,10 @@
 		{
 			"name": "tre_ledde",
 			"path": "."
+		},
+		{
+			"name": "read_light_smooth",
+			"path": "../read_light_smooth"
 		}
 	],
 	"settings": {}
