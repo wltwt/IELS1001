@@ -25,24 +25,13 @@ struct Pin {
   const int photocell = A0;
 };
 
-// setter størrelse til array og dermed også antall avlesninger i funksjonenen
-const int size = 5;
-
-// oppretter tomt array
-int container[size];
-
-// oppretter Pin objekt
-Pin pin;
-
-// brukes i hoved-loopen til å lage en operasjon som utfører operasjon hvert x sekund
-unsigned long readPrev = 0;
-
-// brukes kun til å lagre avlesninger til de to forskjellige funksjonene
-int withArrayValues;
-int withoutArrayValues;
-
-// av/på verdi til å få utskrift fra de to forskjellige funksjonene
-static bool printWithArray = false;
+const int size = 5;                 // setter størrelse til array
+int container[size];                // oppretter tomt array
+Pin pin;                            // oppretter Pin objekt
+unsigned long readPrev = 0;         // brukes som sjekk i interval
+int withArrayValues;                // for lagring av retur-verdien
+int withoutArrayValues;             // for lagring av retur-verdien
+static bool printWithArray = false; // avgjør hvilken funksjon vi printer fra
 
 /*
   Tar inn en liste og avlesningsverdien til en sensor som argumenter.
@@ -57,14 +46,9 @@ static bool printWithArray = false;
   plass frem i listen.
 */
 int read_sensor_with_array(int *container, int readValue) {
-  // setter index til 0 ved første runde
-  static unsigned int i = 0;
-
-  // oppretter variabel for totalen
-  static int total;
-  
-  // oppretter variabel for gjenomsnittsverdien
-  static int average;
+  static unsigned int i = 0;  // oppretter index start
+  static int total;           // variabel for totalen
+  static int average;         // variabel for gjenomsnitt
 
   // leser siste verdi som ble lagt til og trekker fra totalen
   total -= container[i % size];
@@ -85,25 +69,19 @@ int read_sensor_with_array(int *container, int readValue) {
   return average;
 }
 
-/*
-  Tar inn verdien som ble avlest fra lys-sensoren og returnerer gjenomsnittet basert på tidligere avlesinger.
-*/
+
+//  Tar inn verdien som ble avlest fra lys-sensoren og returnerer gjenomsnittet basert på tidligere avlesinger.
 int read_without_array(int readValue) {
-  // oppretter index
-  static unsigned int j = 0;
-  
-  // lokal variabel for total
-  static unsigned int totalWithoutArray;
-  
-  // gjenomsnittsvariabel
-  static unsigned int averageWithoutArray;
+  static unsigned int j = 0;                // oppretter index
+  static unsigned int totalWithoutArray;    // lokal variabel for total
+  static unsigned int averageWithoutArray;  // gjenomsnittsvariabel
   
   // legger til verdier som er avlest for hver runde
   totalWithoutArray += readValue;
-  // Serial.println(j);
 
   // om det har gått n runder finner vi gjenomsnittet av de tidligere målingene her
   if (j % size == 0) {
+    
     // legger sammen totalen og deler på n (5 i dette tilfellet)
     averageWithoutArray = totalWithoutArray / size;
     
@@ -145,13 +123,12 @@ void setup() {
   Serial.begin(9600);
 }
 
-// hovedløkke
 void loop() {
-  // variabel for å lese input til serialmonitoren
-  int incomingByte = 0;
+  int incomingByte = 0; // avlesingvariabel for seriellmonitor
 
   // avleser lys-sensoren med 2ms tidsintervall for bedre avlesning
   if (millis() - readPrev >= 2) {
+
     // setter tiden koden gikk inn sist til en variabel
     readPrev = millis();
 
@@ -185,8 +162,8 @@ void loop() {
 
   // leser om brukeren har sendt ny informasjon
   if (Serial.available() > 0) {
-    // setter nye informasjonen til en variabel
-    incomingByte = Serial.read();
+    // legger informasjonen i en variabel
+    incomingByte = Serial.read(); 
   }
 
   // switch operasjon som sjekker om informasjonen som ble sendt er y eller n
