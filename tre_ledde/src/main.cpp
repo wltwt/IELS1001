@@ -193,6 +193,8 @@ void loop() {
   //     Serial.println(timeNow - gLEDtimer);
   // } else {
   // }
+
+  // hello?
   
   digitalWrite(red, rLED.state);
 
