@@ -57,12 +57,9 @@ int btnp = 0;                         // lagrer knappetrykk
 bool flag = false;                    // logisk flagg for kontrollflyt
 
 /*
-  Funksjon som håndterer alt rundt knappen.
+  Registrerer tilstand, antall knappetrykk og hvor lenge knappen er holdt inne.
 
-  Tar inn referansen til ett knappe-objekt og utfører operasjoner på det.
-
-  Disse operasjonene inkluderer registrere tilstand, antall knappetrykk
-  og hvor lenge knappen er holdt inne.
+  Returnerer ingenting.
 */
 void debounceButton(Button &button) {
 
@@ -117,13 +114,9 @@ void debounceButton(Button &button) {
 }
 
 /*
-  Returnerer tilstand med selv-valgt frekvens.
-  
-  Den tar inn et objekt som holder styr på tid og et LED-status objekt.
-  Dette gjør metoden i stand til å gjenvinnes med flere forskjellige
-  LED'er og forskjellige tidsintervaller.
+  Blinker LED'en av og på med ett gitt tidsintervall.
 
-  Enkel å benytte som argument til digitalWrite() funksjonen.
+  Returnerer tilstanden som 0 eller 1.
 */
 int blinkFrequency(Usertime &time, State &led) {
   
@@ -144,7 +137,9 @@ int blinkFrequency(Usertime &time, State &led) {
   return led.state;
 }
 
-// tar inn ett tilstand-objekt for LED'ene og Knappen(e)
+/*
+  Oppdaterer tilstanden til LED'ene.
+*/
 void updateLED(State &led, Button &btn) {
 
     // sett status til LED basert på hva som er registrert i knappe-objektet

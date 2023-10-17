@@ -34,16 +34,7 @@ int withoutArrayValues;             // for lagring av retur-verdien
 static bool printWithArray = false; // avgjør hvilken funksjon vi printer fra
 
 /*
-  Tar inn en liste og avlesningsverdien til en sensor som argumenter.
-
-  Alt av variabler som brukes er lokale til funksjonen, men de blir ikke
-  slettet fra minnet etter funksjonen har kjørt ferdig fordi vi bruker
-  static nøkkelordet.
-
-  Først trekker den fra siste elementet som ble lagt til, deretter
-  legger den inn en ny verdi i listen som blir lagt til i totalen.
-  Deretter sender vi tilbake gjenomsnittet og inkrementerer en
-  plass frem i listen.
+  Returnerer gjenomsnittsverdien til en lys-sensor med å bruke array.
 */
 int read_sensor_with_array(int *container, int readValue) {
   static unsigned int i = 0;  // oppretter index start
@@ -70,7 +61,9 @@ int read_sensor_with_array(int *container, int readValue) {
 }
 
 
-//  Tar inn verdien som ble avlest fra lys-sensoren og returnerer gjenomsnittet basert på tidligere avlesinger.
+/*
+  Returnerer gjenomsnittsverdien til en lys-sensor uten bruk av array.
+*/ 
 int read_without_array(int readValue) {
   static unsigned int j = 0;                // oppretter index
   static unsigned int totalWithoutArray;    // lokal variabel for total
@@ -101,8 +94,9 @@ int read_without_array(int readValue) {
   // returnerer 0 om ikke gjenomsnittsverdien er funnet enda
   return 0;
 }
-
-// liten funksjon som tar seg av printing av en beskjed med et gitt interval
+/*
+  Printer verdier fra led-sensor til seriemonitor med gitt intervall.
+*/ 
 void print(unsigned long timer, int message) {
   unsigned long now = millis();
   static unsigned long printerTimer = 0;
