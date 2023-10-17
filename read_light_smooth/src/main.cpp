@@ -102,7 +102,7 @@ int read_without_array(int readValue) {
   return 0;
 }
 
-// liten funksjon som tar seg av printing av en beskjed og et gitt interval
+// liten funksjon som tar seg av printing av en beskjed med et gitt interval
 void print(unsigned long timer, int message) {
   unsigned long now = millis();
   static unsigned long printerTimer = 0;
