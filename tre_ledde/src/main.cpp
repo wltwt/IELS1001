@@ -12,7 +12,7 @@
   Knappen er koblet i en pull-up krets hvor arduinoen leser 5V konstant
   bortsett fra når knappen er trykket ned, da registrerer den 0V.
 
-  Det er mulig det ble litt for mye kode i hoved-løkken.
+  Hoved-løkken ble muligens i overkant overfylt.
 
   Skrevet av: Olav Telneset
   GitHub: https://github.com/wltwt
@@ -237,12 +237,10 @@ void loop() {
 
       // skriv høy verdi
       digitalWrite(red, HIGH);
-
     } else {
       
       // toggle-rød LED som vanlig
       digitalWrite(red, rLED.state);
-
     }
   } else {
     
