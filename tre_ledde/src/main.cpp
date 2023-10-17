@@ -12,16 +12,18 @@
   Knappen er koblet i en pull-up krets hvor arduinoen leser 5V konstant
   bortsett fra når knappen er trykket ned, da registrerer den 0V.
 
+  Det er mulig det ble litt for mye kode i hoved-løkken.
+
   Skrevet av: Olav Telneset
   GitHub: https://github.com/wltwt
 */
 
 #include <Arduino.h>
 
-// Setter opp hvilke ut-pin'er LED'ene er koblet til.
+// setter opp hvilke ut-pin'er LED'ene er koblet til.
 enum LED_PINS {green = 9, yellow, red, size};
 
-// Oppretter en mal for ett "Button" objekt.
+// oppretter en mal for ett "Button" objekt
 struct Button {
   int pin;
   int lastState;
@@ -40,27 +42,43 @@ struct Usertime {
   unsigned long timer;
 };
 
-// kanskje unødvendig
+// håndterer status til hver LED
 struct State {
   int state;
   int prevState = HIGH;
 };
 
-// oppretter objekter
+// oppretter objekter for Struct'ene definert over
 Button btn = {12, HIGH, 0, 25, HIGH};
+
+// setter frekvensen til LED blinkingen
 Usertime freq_850 = {0, 100, 850};
+
+// holder oversikt på om en LED er av eller på og hva dens forrige tilstand var
 State gLED, yLED, rLED;
 
-static bool greenOn = false; 
+// brukes til å toggle av/på modus-2
+static bool redOn = false; 
+
+// holder nåværende tid som brukes til å regne ut hvor lenge grønn LED skal være på
 static unsigned long gLEDtimer = 0;
+
+// buttonpress brukes til å sjekke om knappen er trykket en ekstra gang
 int btnp = 0;
+
+// hjelpeflag som driver mye av programflyten i hovedprogrammet
 bool flag = false;
 
-
 /*
-  
+  Funksjon som håndterer alt rundt knappen.
+
+  Tar inn referansen til ett knappe-objekt og utfører operasjoner på det.
+
+  Disse operasjonene inkluderer registrere tilstand, antall knappetrykk
+  og hvor lenge knappen er holdt inne.
 */
 void debounceButton(Button &button) {
+
   // les verdien den nåværende verdien til knappen
   int reading = digitalRead(button.pin);
 
@@ -80,7 +98,7 @@ void debounceButton(Button &button) {
       // skriv verdien til knapp-objektet
       button.holdTime = buttonHold;
     }
-    // 
+    // oppdaterer hvor lenge knappen er holdt inne
     button.lastDebounceTime = millis();
   }
   
@@ -95,7 +113,8 @@ void debounceButton(Button &button) {
 
       // sjekker om knappen har endret seg siden forrige tilstand 
       if(button.state == LOW) {
-        // endre tilstand
+        
+        // toggle knappetilstand
         button.toggle = !button.toggle;
         
         /* 
@@ -107,6 +126,7 @@ void debounceButton(Button &button) {
       }
     }
   }
+
   // sett forrige tilstand til knappen til det som ble avlest
   button.lastState = reading;
 }
@@ -114,27 +134,39 @@ void debounceButton(Button &button) {
 /*
   Returnerer tilstand med selv-valgt frekvens.
   
-  Den tar inn et tids-objekt og et LED-status objekt.
+  Den tar inn et objekt som holder styr på tid og et LED-status objekt.
   Dette gjør metoden i stand til å gjenvinnes med flere forskjellige
   LED'er og forskjellige tidsintervaller.
+
+  Enkel å benytte som argument til digitalWrite() funksjonen.
 */
+
 int blinkFrequency(Usertime &time, State &led) {
+  
   // definerer tiden som er når metoden kalles
   time.now = millis();
 
   // time.now inkrementerer for hver runde iterasjon av koden
   if (time.now - time.earlier >= time.timer) {
+    
     // setter betingelse for når neste tidsinterval skal gå av
     time.earlier = millis();
+    
     // toggler led-tilstand
     led.state = !led.state;
   }
+  
   // returnerer tilstand til LED'en man sendte inn
   return led.state;
 }
 
+// tar inn ett tilstand-objekt for LED'ene og Knappen(e)
 void updateLED(State &led, Button &btn) {
+
+    // sett status til LED basert på hva som er registrert i knappe-objektet
     led.state = btn.toggle;
+
+    // toggle tilstand og sist tilstand
     led.prevState = !led.state;
 }
 
@@ -149,56 +181,76 @@ void setup() {
 }
 
 void loop() {
+  // lokal variabel slik at logikken i loop er synkronisert
   unsigned long timeNow = millis();
+
+  // kaller debounceButton funksjonen som håndterer oppdatering av tilstanden til knapp-objektet btn
   debounceButton(btn);
+
+  // egen funksjon som oppdaterer tilstanden til LED'ene
   updateLED(rLED, btn);
   updateLED(gLED, btn);
-
+    
+  // Kontroll-logikk for hovedprogrammet.
   if (btn.holdTime > 800) {
+    
+    // resetter slik at kondisjonen er falsk ved neste iterasjon
     btn.holdTime = 0;
-    greenOn = !greenOn;
+
+    // toggler tilstand til at rød led skal være på helt til nytt knappetrykk registrert, vi kan kalle det for modus-2
+    redOn = !redOn;
+
+    // boolsk verdi som brukes til logiske operasjoner under
     flag = true;
   }
 
-  // dummeste løsning men den fungerer
-  if (greenOn) {
+  // av/på bryter for modus-2
+  if (redOn) {
+
+    // sjekker om knappen er trykket
     if ( (btn.count == btnp + 1) && flag ) {
+
+      // setter start-tid til hvor lenge grønt lys skal være på
       gLEDtimer = millis();
+
+      // sørger for at kondisjons-sjekken ikke kjører flere ganger
       flag = false;
     }
+
+    // lagre nåværende knappetrykk
     btnp = btn.count;
-    if ( ((timeNow - gLEDtimer < 5000) && gLEDtimer > 0)) {
+
+    // se om det har gått 5 sekunder og se om timeren til grønn LED er over 0 for å unngå at den aktiveres ved oppstart
+    if ((timeNow - gLEDtimer < 5000) && gLEDtimer > 0) {
       digitalWrite(green, HIGH);
-      // Serial.print(timeNow);
-      // Serial.print(" - gLedTime:");
-      // Serial.print(gLEDtimer);
-      // Serial.print(" is : ");
-      // Serial.println(timeNow - gLEDtimer);
+
+      // tillater litt slingringsmonn for når vi skal avslutte modus-2 
       if ( (timeNow - gLEDtimer) > 4900 && (timeNow - gLEDtimer) < 5000) {
-        greenOn = false;
-        gLEDtimer = 0;
+        
+        // skrur av modus-2 selv
+        redOn = false;
       }
     }
-    digitalWrite(green, HIGH);
+
+    // flag holdes høyt (sant) så lenge knappen ikke har registrert flere trykk
+    if (flag) {
+
+      // skriv høy verdi
+      digitalWrite(red, HIGH);
+
+    } else {
+      
+      // toggle-rød LED som vanlig
+      digitalWrite(red, rLED.state);
+
+    }
   } else {
+    
+    // oppdater LED'er som vanlig
     digitalWrite(green, gLED.prevState);
+    digitalWrite(red, rLED.state);
   }
-  
-  // if ( ((timeNow - gLEDtimer < 5000) && gLEDtimer > 0) && !greenOn ) {
-  //     digitalWrite(green, HIGH);
-  //     Serial.print(timeNow);
-  //     Serial.print(" - gLedTime:");
-  //     Serial.print(gLEDtimer);
-  //     Serial.print(" is : ");
-  //     Serial.println(timeNow - gLEDtimer);
-  // } else {
-  // }
 
-  // hello?
-  
-  digitalWrite(red, rLED.state);
-
-
-  // blinker gul LED med frekvens 850ms
+  // blinker gul LED med frekvens 850ms ved hver iterasjon
   digitalWrite(yellow, blinkFrequency(freq_850, yLED));
 }
