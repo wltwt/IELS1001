@@ -123,5 +123,5 @@ void turnSensorSetup()
   // user presses A.
   display.clear();
   turnSensorReset();
-
+  //fixed
 }
