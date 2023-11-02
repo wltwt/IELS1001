@@ -1,50 +1,37 @@
-/* This example shows how to:
+/* This demo shows how the Zumo can use its gyroscope to detect
+when it is being rotated, and use the motors to resist that
+rotation.
 
-- Measure the voltage of the Zumo's batteries.
-- Detect whether USB power is present.
+This code was tested on a Zumo with 4 NiMH batteries and two 75:1
+HP micro metal gearmotors.  If you have different batteries or
+motors, you might need to adjust the PID constants.
 
-The results are printed to the display and also to the serial
-monitor.
+Be careful to not move the robot for a few seconds after starting
+it while the gyro is being calibrated.  During the gyro
+calibration, the yellow LED is on and the words "Gyro cal" are
+shown on the display.
 
-The battery voltage can only be read when the power switch is in
-the "On" position.  If the power switch is off, the voltage
-reading displayed by this demo will be low, but it might not be
-zero because the Zumo 32U4 has capacitors that take a while to
-discharge. */
+After the gyro calibration is done, press button A to start the
+demo.  If you try to turn the Zumo, or put it on a surface that
+is turning, it will drive its motors to counteract the turning.
+
+This demo only uses the Z axis of the gyro, so it is possible to
+pick up the Zumo, rotate it about its X and Y axes, and then put
+it down facing in a new position. */
 
 #include <Wire.h>
 #include <Zumo32U4.h>
+
+
+// This is the maximum speed the motors will be allowed to turn.
+// A maxSpeed of 400 lets the motors go at top speed.  Decrease
+// this value to impose a speed limit.
+const int16_t maxSpeed = 400;
 
 // Change next line to this if you are using the older Zumo 32U4
 // with a black and green LCD display:
 // Zumo32U4LCD display;
 Zumo32U4OLED display;
-
-Zumo32U4Motors motors;
-Zumo32U4ButtonA buttonA;
-
-Zumo32U4Encoders encoders;
-Zumo32U4Buzzer buzzer;
-// Zumo32U4Motors motors;
-// Zumo32U4ButtonA buttonA;
-Zumo32U4ButtonC buttonC;
-
-// Change next line to this if you are using the older Zumo 32U4
-// with a black and green LCD display:
-// Zumo32U4LCD display;
-// Zumo32U4OLED display;
-
-const char encoderErrorLeft[] PROGMEM = "!<c2";
-const char encoderErrorRight[] PROGMEM = "!<e2";
-
-char report[80];
-
-char report[120];
-
-
-Zumo32U4IMU imu;
-
-
 
 void setup()
 {
@@ -72,7 +59,25 @@ void setup()
   delay(1000);
   
 
+  for (int i = 0; i<AVERAGE_ARRAY_SIZE; i++) {
+    averageValues[i] = 0;
+  }
+
+  ls.initFiveSensors();
+  // turnSensorSetup();
+  // delay(500);
+  // turnSensorReset();
+
+  motor_1 = 0;
+  motor_2 = 0;
+
+  // display.clear();
+  // display.print(F("Try to"));
+  // display.gotoXY(0, 1);
+  // display.print(F("turn me!"));
+  Serial.begin(9600);
 }
+
 
 void loop()
 {
@@ -81,111 +86,20 @@ void loop()
   uint16_t batteryLevel = readBatteryMillivolts();
 
   // Print the results to the display.
-  // display.clear();
-  // display.print(F("B="));
-  // display.print(batteryLevel);
-  // display.print(F("mV   "));
-  // display.gotoXY(0, 1);
-  // display.print(F("USB="));
-  // display.print(usbPower ? 'Y' : 'N');
+  display.clear();
+  display.print(F("B="));
+  display.print(batteryLevel);
+  display.print(F("mV   "));
+  display.gotoXY(0, 1);
+  display.print(F("USB="));
+  display.print(usbPower ? 'Y' : 'N');
 
-  // // Print the results to the serial monitor.
-  // Serial.print(F("USB="));
-  // Serial.print(usbPower ? 'Y' : 'N');
-  // Serial.print(F(" B="));
-  // Serial.print(batteryLevel);
-  // Serial.println(F(" mV"));
+  // Print the results to the serial monitor.
+  Serial.print(F("USB="));
+  Serial.print(usbPower ? 'Y' : 'N');
+  Serial.print(F(" B="));
+  Serial.print(batteryLevel);
+  Serial.println(F(" mV"));
 
-  static uint8_t lastDisplayTime;
-  static uint8_t displayErrorLeftCountdown = 0;
-  static uint8_t displayErrorRightCountdown = 0;
-
-  if ((uint8_t)(millis() - lastDisplayTime) >= 100)
-  {
-    lastDisplayTime = millis();
-
-    int16_t countsLeft = encoders.getCountsLeft();
-    int16_t countsRight = encoders.getCountsRight();
-
-    bool errorLeft = encoders.checkErrorLeft();
-    bool errorRight = encoders.checkErrorRight();
-
-    if (errorLeft)
-    {
-      // An error occurred on the left encoder channel.
-      // Show it on the display for the next 10 iterations and
-      // also beep.
-      displayErrorLeftCountdown = 10;
-      buzzer.playFromProgramSpace(encoderErrorLeft);
-    }
-
-    if (errorRight)
-    {
-      // An error occurred on the right encoder channel.
-      // Show it on the display for the next 10 iterations and
-      // also beep.
-      displayErrorRightCountdown = 10;
-      buzzer.playFromProgramSpace(encoderErrorRight);
-    }
-
-    // Update the display with encoder counts and error info.
-    display.clear();
-    display.print(countsLeft);
-    display.gotoXY(0, 1);
-    display.print(countsRight);
-
-    if (displayErrorLeftCountdown)
-    {
-      // Show an exclamation point on the first line to
-      // indicate an error from the left encoder.
-      display.gotoXY(7, 0);
-      display.print('!');
-      displayErrorLeftCountdown--;
-    }
-
-    if (displayErrorRightCountdown)
-    {
-      // Show an exclamation point on the second line to
-      // indicate an error from the left encoder.
-      display.gotoXY(7, 1);
-      display.print('!');
-      displayErrorRightCountdown--;
-    }
-
-    // Send the information to the serial monitor also.
-    snprintf_P(report, sizeof(report),
-        PSTR("%6d %6d %1d %1d"),
-        countsLeft, countsRight, errorLeft, errorRight);
-    Serial.println(report);
-  }
-
-  if (buttonA.isPressed())
-  {
-    static int speed;
-    for (speed = 0; speed <= 400; speed++) {
-      motors.setSpeeds(speed, speed);
-      delay(2);
-    }
-    for (speed = speed; speed >= 0; speed--){
-      motors.setSpeeds(speed,speed);
-      delay(2);
-    }
-  }
-  else if (buttonC.isPressed())
-  {
-    for (int speed = 0; speed >= -400; speed--) {
-      motors.setSpeeds(speed, speed);
-      delay(2);
-    }
-    for (int speed = -400; speed <= 0; speed++) {
-      motors.setSpeeds(speed, speed);
-      delay(2);
-    }
-  }
-  else
-  {
-    motors.setSpeeds(0, 0);
-  }
-
-  delay(500);
+  delay(200);
 }
