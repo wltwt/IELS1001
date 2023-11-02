@@ -42,6 +42,7 @@ Zumo32U4LineSensors ls;
 
 
 #include "TurnSensor.h"
+#include "Speed.h"
 
 #define NUM_SENSORS 5
 #define AVERAGE_ARRAY_SIZE 18 
@@ -103,6 +104,7 @@ void calibrateSensors() {
 
 void setup()
 {
+  test();
 
   for (int i = 0; i<AVERAGE_ARRAY_SIZE; i++) {
     averageValues[i] = 0;

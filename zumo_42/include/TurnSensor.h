@@ -6,7 +6,7 @@
 // somewhere after you define objects named buttonA,
 // display, and imu.
 #pragma once
-#include <Wire.h>
+// #include <Wire.h>
 
 // This constant represents a turn of 45 degrees.
 const int32_t turnAngle45 = 0x20000000;
