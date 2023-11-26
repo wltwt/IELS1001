@@ -59,11 +59,12 @@ void turnSensorUpdate()
   // Read the measurements from the gyro.
   imu.readGyro();
   turnRate = imu.g.z - gyroOffset;
+  
 
   // Figure out how much time has passed since the last update (dt)
   uint16_t m = micros();
   uint16_t dt = m - gyroLastUpdate;
-  gyroLastUpdate = m; 
+  gyroLastUpdate = m;
 
   // Multiply dt by turnRate in order to get an estimation of how
   // much the robot has turned since the last update.
@@ -107,6 +108,7 @@ void turnSensorSetup()
 
   // Calibrate the gyro.
   int32_t total = 0;
+
   for (uint16_t i = 0; i < 1024; i++)
   {
     // Wait for new data to be available, then read it.
@@ -116,6 +118,7 @@ void turnSensorSetup()
     // Add the Z axis reading to the total.
     total += imu.g.z;
   }
+  
   ledYellow(0);
   gyroOffset = total / 1024;
 

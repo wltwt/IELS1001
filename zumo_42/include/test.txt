@@ -1,0 +1,51 @@
+#include <Zumo32U4.h>
+
+Zumo32U4Encoders encoders;
+
+// Encoder ticks per wheel revolution
+const float ticksPerRevolution = <Ticks_Per_Revolution>;
+
+// Wheel diameter (in meters or centimeters)
+const float wheelDiameter = <Wheel_Diameter>;
+
+// Calculate wheel circumference
+const float wheelCircumference = wheelDiameter * PI;
+
+// Time variables
+unsigned long previousMillis = 0;
+const long interval = 1000; // Time interval in milliseconds
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+
+    // Get the current tick count from each encoder
+    long leftTicks = encoders.getCountsLeft();
+    long rightTicks = encoders.getCountsRight();
+
+    // Calculate distance traveled by each wheel
+    float leftDistance = (leftTicks / ticksPerRevolution) * wheelCircumference;
+    float rightDistance = (rightTicks / ticksPerRevolution) * wheelCircumference;
+
+    // Calculate speed (distance/time)
+    float leftSpeed = leftDistance / (interval / 1000.0); // Speed in units per second
+    float rightSpeed = rightDistance / (interval / 1000.0);
+
+    // Print speeds
+    Serial.print("Left Speed: ");
+    Serial.print(leftSpeed);
+    Serial.print(" units/s, Right Speed: ");
+    Serial.print(rightSpeed);
+    Serial.println(" units/s");
+
+    // Reset encoder counts
+    encoders.getCountsAndResetLeft();
+    encoders.getCountsAndResetRight();
+  }
+}
