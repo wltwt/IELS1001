@@ -1,11 +1,36 @@
 #include <Wire.h>
 #include <Zumo32U4.h>
+#include <EEPROM.h>
+
+// kilder:
+// https://www.geeksforgeeks.org/when-do-we-use-initializer-list-in-c/
+// https://forum.arduino.cc/t/c-object-instantiation-in-setup/337684
+// https://forum.arduino.cc/t/how-do-i-use-enum/70307
+// https://docs.arduino.cc/learn/programming/eeprom-guide
+
+
+enum State {CHARGING, DISCHARGING};
+
+struct Battery {
+  State s;
+  int16_t battery_level;
+  uint16_t battery_cycles;
+  int16_t battery_health;
+
+  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {}
+
+};
+
+
+
 
 Zumo32U4IMU imu;
 Zumo32U4OLED display;
 Zumo32U4Motors motors;
 Zumo32U4ButtonA buttonA;
+Zumo32U4ButtonB buttonB;
 Zumo32U4Encoders encoders;
+
 
 struct Highest
 {
@@ -21,6 +46,9 @@ int32_t velocity;
 uint16_t accLastUpdate;
 int32_t highestValue = 0;
 
+int storeEEPROMtest = 0;
+
+Battery *battery = NULL;
 
 
 void accReset(){
@@ -77,10 +105,17 @@ void displayView(char topScreen[16], char middleScreen[16], char bottomScreen[16
   display.print(F("       "));
 } 
 
+
+
 void setup()
 {
   Wire.begin();
+  Serial.begin(9600);
+  // EEPROM.put(0x00, 17823);
 
+  EEPROM.get(0x00, storeEEPROMtest);
+
+  battery = new Battery(0, 10);
 
 
   accReset();
@@ -98,6 +133,14 @@ void loop()
   int16_t encoderLeft = encoders.getCountsLeft();
   int16_t encoderCount;
   static int32_t d;
+  
+  // Serial.println(battery->battery_health);
+
+  if (buttonA.isPressed()) {
+    Serial.println(storeEEPROMtest);
+  }
+
+  delay(100);
 
   // encoder resolution: 12 / revolution
   // 909.7 cpr
@@ -131,7 +174,7 @@ void loop()
 
   //update();
   
-  if (buttonA.isPressed()) {
+  if (buttonB.isPressed()) {
     unsigned long now = millis();
     delay(1000);
     display.clear();
