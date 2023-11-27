@@ -11,16 +11,38 @@
 
 enum State {CHARGING, DISCHARGING};
 
+int IR_CHARGING = 0;
+
 struct Battery {
-  State s;
+  State state = DISCHARGING;
   int16_t battery_level;
   uint16_t battery_cycles;
   int16_t battery_health;
 
-  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {}
+  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {
+    checkState();
+  }
 
+  Battery() : battery_cycles() {
+    checkState();
+    getEEPROM();
+  }
+
+  void checkState() {
+    if (IR_CHARGING) {
+      state = CHARGING;
+    }
+  }
+
+  // setter som private, vil unngå unødvendig tilgang til EEPROM
+  private:
+    void getEEPROM() {
+      EEPROM.get(0x00, battery_cycles);
+    }
 };
 
+
+Battery *battery = NULL;  // oppretter kun pointer
 
 
 
@@ -47,9 +69,6 @@ uint16_t accLastUpdate;
 int32_t highestValue = 0;
 
 int storeEEPROMtest = 0;
-
-Battery *battery = NULL;
-
 
 void accReset(){
   accLastUpdate = micros();
@@ -115,7 +134,7 @@ void setup()
 
   EEPROM.get(0x00, storeEEPROMtest);
 
-  battery = new Battery(0, 10);
+  battery = new Battery();
 
 
   accReset();
@@ -137,7 +156,9 @@ void loop()
   // Serial.println(battery->battery_health);
 
   if (buttonA.isPressed()) {
-    Serial.println(storeEEPROMtest);
+    // Serial.println(battery);
+    Serial.println(battery->battery_cycles);
+    Serial.println(battery->state);
   }
 
   delay(100);
@@ -171,8 +192,11 @@ void loop()
     displayView(encoderRPM, distance);
 
   }
-
+  if (battery->state == CHARGING) {
+    motors.setSpeeds(0,0);
+  }
   //update();
+  
   
   if (buttonB.isPressed()) {
     unsigned long now = millis();
