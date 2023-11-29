@@ -8,6 +8,10 @@
 // https://forum.arduino.cc/t/how-do-i-use-enum/70307
 // https://docs.arduino.cc/learn/programming/eeprom-guide
 
+// encoder resolution: 12 / revolution
+// 909.7 cpr
+// diameter: 39mm
+
 
 enum State {CHARGING, DISCHARGING}; 
 enum EEPROMaddress {bLevel = 0x00, bCycles = 0x01, bHealth = 0x02};
@@ -63,6 +67,7 @@ void displayView(char topScreen[16], char bottomScreen[16]) {
 struct Position {
   // ordne slik at alt som har med posisjon og hastighet skjer her
   int32_t distance;
+  int16_t speedBoth;
 
   struct Encoder {
     int16_t left, right;                                       // encoder count
@@ -74,47 +79,47 @@ struct Position {
     }
   };
 
-  Encoder *enc = NULL;
+  Encoder enc;
 
   Position() : enc() {
-    enc = new Encoder();
     distance = 0;
   }
 
   void update() {
-    enc->left = encoders.getCountsLeft();
-    enc->right = encoders.getCountsRight();
+    enc.left = encoders.getCountsLeft();
+    enc.right = encoders.getCountsRight();
   }
 
   void getSpeed() {
-    
+    speedBoth = 0;
+  
     update();
 
-    // Serial.println(enc->count);
-
-    if (enc->left != enc->pCountL) { //|| enc->right != enc->pCountR) {
+    if ((enc.left != enc.pCountL) || (enc.right != enc.pCountR)) {
       uint16_t now = micros();
-      uint16_t dt = now - enc->lastUpdate;
-      enc->lastUpdate = now;
-      enc->countL = enc->left - enc->pCountL;
+      uint16_t dt = now - enc.lastUpdate;
+      enc.lastUpdate = now;
+      enc.countL = enc.left - enc.pCountL;
+      enc.countR = enc.right - enc.pCountR;
 
       
-      // encoder resolution: 12 / revolution
-      // 909.7 cpr
-      // diameter: 39mm
-      // (encoderCount*39*pi*100000000)/(dt*9097) - skalert for høyere nøyaktighet og unngå floating point operations (mm/s)
-      int16_t encoderSpeed = (int64_t)enc->countL * 1225221134 / ((int64_t)dt * 9097);
 
-      enc->pCountL = enc->left;
+      // (encoderCount*39*pi*100000000)/(dt*9097) - skalert for høyere nøyaktighet og unngå floating point operations (mm/s)
+      int16_t speedL = (int64_t)enc.countL * 1225221134 / ((int64_t)dt * 9097);
+      int16_t speedR = (int64_t)enc.countR * 1225221134 / ((int64_t)dt * 9097);
+
+      enc.pCountL = enc.left;
+      enc.pCountR = enc.right;
+
+      speedBoth = (speedL + speedR) / 2;
       
       // pi * 39mm * encoderLeft * 10 / x cpr (mm)
-      distance += (enc->countL * 1225)/9097;
+      distance += (((enc.countL+enc.countR)/2) * 1225)/9097;
 
       char encoderRPM[10], distance_thing[10];
-      snprintf_P(encoderRPM, sizeof(encoderRPM), PSTR("0,%2d m/s"), encoderSpeed);
+      snprintf_P(encoderRPM, sizeof(encoderRPM), PSTR("0,%2d m/s"), speedBoth);
       snprintf_P(distance_thing, sizeof(distance_thing), PSTR("%2d mm"), distance);
       displayView(encoderRPM, distance_thing);
-
     }
   }
 };
@@ -220,20 +225,65 @@ void loop()
   
   // Serial.println(battery->battery_health);
 
-  if (buttonA.isPressed()) {
-    unsigned long now = millis();
-    do {
-      motors.setSpeeds(150,150);
+  char speeds1[10], speeds2[10];
 
+  if (buttonA.isPressed()) {
+    int a = 10;
+    int *t;
+    t = &a;
+    int *b = t;
+
+    int *c[5] = {t,b};
+
+    // Serial.println((unsigned long)*c[0]);
+    
+
+    // Serial.println((unsigned long)*t);
+    // Serial.println((unsigned long)*b);
+
+    // Serial.println((uint16_t)&pos->enc);
+
+    unsigned long now = millis();
+    hr.firstRun = 0;  
+    do {
       pos->getSpeed();
 
-    
+      motors.setSpeeds(150,150);  
+      if (pos->speedBoth > hr.firstRun) {
+        hr.firstRun = pos->speedBoth;
+      }
+      Serial.print(">hr1:");
+      Serial.println(pos->speedBoth);
     
     } while (millis() - now < 2000); 
     motors.setSpeeds(0,0);
+    delay(1000);
+    pos->getSpeed();
+    now = millis();
+    hr.secondRun = 0;
+    do {
+      pos->getSpeed();
+
+      motors.setSpeeds(50,150);  
+
+      if (pos->speedBoth > hr.secondRun) {
+        hr.secondRun = pos->speedBoth;
+      }
+      Serial.print(">hr2:");
+      Serial.println(pos->speedBoth);
+
+    } while (millis() - now < 2000); 
+    snprintf_P(speeds1, sizeof(speeds1), PSTR("%2d speed1"), hr.firstRun);
+    snprintf_P(speeds2, sizeof(speeds2), PSTR("%2d speed2"), hr.secondRun);
+    // Serial.println(hr.firstRun);
+    // Serial.println(hr.secondRun);
+
+
+    
+    motors.setSpeeds(0,0);
   }
 
-
+  displayView(speeds1, speeds2);
 
   delay(1);
 
