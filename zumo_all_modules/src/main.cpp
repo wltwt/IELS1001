@@ -12,9 +12,18 @@
 // 909.7 cpr
 // diameter: 39mm
 
+#define AVERAGE_INTERVAL 2000               // ms
 
-enum State {CHARGING, DISCHARGING}; 
-enum EEPROMaddress {bLevel = 0x00, bCycles = 0x01, bHealth = 0x02};
+enum BatteryState {
+  STATE_CHARGING, 
+  STATE_DISCHARGING
+};
+
+enum EEPROMaddress {
+  bLevel = 0x00,
+  bCycles = 0x01, 
+  bHealth = 0x02
+};
 
 
 int IR_CHARGING = 0;  // temp
@@ -25,35 +34,6 @@ Zumo32U4Motors motors;
 Zumo32U4ButtonA buttonA;
 Zumo32U4ButtonB buttonB;
 Zumo32U4Encoders encoders;
-
-
-struct Battery {
-  State state = DISCHARGING;
-  int16_t battery_level;
-  uint16_t battery_cycles;
-  int16_t battery_health;
-
-  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {
-    checkCurrentState();
-  }
-
-  Battery() : battery_cycles() {
-    checkCurrentState();
-    getEEPROM();
-  }
-
-  void checkCurrentState() {
-    if (IR_CHARGING) {
-      state = CHARGING;
-    }
-  }
-
-  // setter som private, vil unngå unødvendig tilgang til EEPROM
-  private:
-    void getEEPROM() {
-      EEPROM.get(bLevel, battery_cycles);
-    }
-};
 
 void displayView(char topScreen[16], char bottomScreen[16]) {
   display.gotoXY(0, 0);
@@ -67,7 +47,10 @@ void displayView(char topScreen[16], char bottomScreen[16]) {
 struct Position {
   // ordne slik at alt som har med posisjon og hastighet skjer her
   int32_t distance;
-  int16_t speedBoth;
+  int16_t speed, maxSpeed;
+  int16_t previousAverageDistance = 0, averageVelocity = 0, speedTimer = 0;
+  uint32_t timeAbove = 0;
+  unsigned long prev;
 
   struct Encoder {
     int16_t left, right;                                       // encoder count
@@ -83,48 +66,154 @@ struct Position {
 
   Position() : enc() {
     distance = 0;
+    maxSpeed = 0;
   }
 
-  void update() {
-    enc.left = encoders.getCountsLeft();
-    enc.right = encoders.getCountsRight();
-  }
-
-  void getSpeed() {
-    speedBoth = 0;
-  
-    update();
-
-    if ((enc.left != enc.pCountL) || (enc.right != enc.pCountR)) {
-      uint16_t now = micros();
-      uint16_t dt = now - enc.lastUpdate;
-      enc.lastUpdate = now;
-      enc.countL = enc.left - enc.pCountL;
-      enc.countR = enc.right - enc.pCountR;
-
-      
-
-      // (encoderCount*39*pi*100000000)/(dt*9097) - skalert for høyere nøyaktighet og unngå floating point operations (mm/s)
-      int16_t speedL = (int64_t)enc.countL * 1225221134 / ((int64_t)dt * 9097);
-      int16_t speedR = (int64_t)enc.countR * 1225221134 / ((int64_t)dt * 9097);
-
-      enc.pCountL = enc.left;
-      enc.pCountR = enc.right;
-
-      speedBoth = (speedL + speedR) / 2;
-      
-      // pi * 39mm * encoderLeft * 10 / x cpr (mm)
-      distance += (((enc.countL+enc.countR)/2) * 1225)/9097;
-
-      char encoderRPM[10], distance_thing[10];
-      snprintf_P(encoderRPM, sizeof(encoderRPM), PSTR("0,%2d m/s"), speedBoth);
-      snprintf_P(distance_thing, sizeof(distance_thing), PSTR("%2d mm"), distance);
-      displayView(encoderRPM, distance_thing);
+  private:
+    void update() {
+      enc.left = encoders.getCountsLeft();
+      enc.right = encoders.getCountsRight();
     }
-  }
+
+    void calculateSpeed() {    
+      update();
+
+      if ((enc.left != enc.pCountL) || (enc.right != enc.pCountR)) {
+        uint16_t now = micros();
+        uint16_t dt = now - enc.lastUpdate;
+        enc.lastUpdate = now;
+        enc.countL = enc.left - enc.pCountL;
+        enc.countR = enc.right - enc.pCountR;
+
+        // (encoderCount*39*pi*100000000)/(dt*9097) - skalert for høyere nøyaktighet og unngå floating point operations (mm/s)
+        int16_t speedL = (int64_t)enc.countL * 1225221134 / ((int64_t)dt * 9097);
+        int16_t speedR = (int64_t)enc.countR * 1225221134 / ((int64_t)dt * 9097);
+
+        enc.pCountL = enc.left;
+        enc.pCountR = enc.right;
+
+        int16_t speed = (speedL + speedR) / 2;
+
+        getSpeed(speed);
+        getMaxSpeed(speed);
+        
+        // Serial.print(">lastUpdate:");
+        // Serial.println(micros() - enc.lastUpdate);
+        // Serial.print(">previousAverage:");
+        // Serial.println(previousAverageDistance);
+
+        // pi * 39mm * encoderLeft * 10 / x cpr (mm)
+        distance += (((enc.countL+enc.countR)/2) * 1225)/9097;
+
+        char encoderRPM[10], distance_thing[10];
+        snprintf_P(encoderRPM, sizeof(encoderRPM), PSTR("0,%2d m/s"), speed);
+        snprintf_P(distance_thing, sizeof(distance_thing), PSTR("%2d mm"), distance);
+        displayView(encoderRPM, distance_thing);
+      } else {
+        speed = 0;
+      }
+      getAverageVelocity();
+    }
+
+    void getSpeed(int16_t s) {
+      speed = s;
+    }
+
+    void getMaxSpeed(int16_t v) {
+      if (v > maxSpeed) {
+        maxSpeed = v;
+      }
+    }
+
+    void getAverageVelocity() {
+      uint16_t now = micros();
+      Serial.print(">speed:");
+      Serial.println(speed);
+      // Serial.print(">averagevelo:");
+      // Serial.println(averageVelocity);
+
+      // bilen står stille
+      if (now - enc.lastUpdate > 5000){
+        prev = 0;
+        averageVelocity = 0;
+        maxSpeed = 0;
+        previousAverageDistance = distance;
+        
+        // bilen beveger seg
+      } else {
+
+        // Serial.print(">millis - prev:");
+        // Serial.println(millis() - prev);
+        if (millis() - prev > AVERAGE_INTERVAL) {
+          unsigned long now = millis();
+          prev = now;
+          speedTimer = now;
+          timeAbove = 0;
+
+        // Serial.print(">millis - prev:");
+        // Serial.println(millis() - prev);
+          averageVelocity = (distance - previousAverageDistance) / 2;
+          previousAverageDistance = distance;
+        }
+
+        if (speed > 200) {
+          timeAbove += millis() - speedTimer;
+
+          Serial.print(">TimeAbove:");
+          Serial.println(timeAbove);
+        } 
+      }
+    }
+
+  public:
+    void updatePosition() {
+      calculateSpeed();
+    }
+
 };
 
+struct Battery {
+  BatteryState state = STATE_DISCHARGING;
+  int16_t battery_level;
+  uint16_t battery_cycles;
+  int16_t battery_health;
 
+  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {
+    checkCurrentState();
+  }
+
+  Battery() : battery_cycles() {
+    checkCurrentState();
+    getEEPROM();
+  }
+
+  void discharging(int16_t distance) {
+    battery_level -= distance / 1000;
+  }
+
+  void checkCurrentState() {
+    if (IR_CHARGING) {
+      state = STATE_CHARGING;
+    }
+  }
+
+  BatteryState getCurrentState() {
+    return state;
+  }
+
+  // setter som private, vil unngå unødvendig tilgang til EEPROM
+  private:
+    void getEEPROM() {
+      EEPROM.get(bLevel, battery_cycles);
+    }
+};
+
+struct Account {
+  int16_t ID;
+  int16_t account_saldo;
+
+
+};
 
 Battery *battery = NULL;  // oppretter kun pointer
 Position *pos = NULL;
@@ -156,21 +245,22 @@ char sb01[16], sb02[16], sb03[16];
 
 
 // inspired from example code
-// void update() {
-//   imu.read();
-//   accX = imu.a.x;
-//   accX = ((int32_t)accX*19620)/65535; // 2 (g) * 981 cm/s^2 / 2^16 - 1
+// tillegg?
+void update() {
+  imu.read();
+  accX = imu.a.x;
+  accX = ((int32_t)accX*19620)/65535; // 2 (g) * 981 cm/s^2 / 2^16 - 1
 
-//   uint16_t m = micros();
-//   uint16_t dt = m - accLastUpdate;
-//   accLastUpdate = m;
-//   int32_t d = (int32_t)accX * dt;
-//   velocity += d / 1000000;
+  uint16_t m = micros();
+  uint16_t dt = m - accLastUpdate;
+  accLastUpdate = m;
+  int32_t d = (int32_t)accX * dt;
+  velocity += d / 1000000;
 
-//   display.gotoXY(0, 0);
-//   display.print(velocity);
-//   display.print(F("       "));
-// }
+  display.gotoXY(0, 0);
+  display.print(velocity);
+  display.print(F("       "));
+}
 
 void getHighestVelocity() {
   if (velocity > highestValue){
@@ -227,6 +317,15 @@ void loop()
 
   char speeds1[10], speeds2[10];
 
+  switch (battery->state) {
+    case STATE_CHARGING:
+      motors.setSpeeds(0,0);
+      break;
+    case STATE_DISCHARGING:
+      // continue as normal?
+      break;
+  }
+
   if (buttonA.isPressed()) {
     int a = 10;
     int *t;
@@ -246,31 +345,40 @@ void loop()
     unsigned long now = millis();
     hr.firstRun = 0;  
     do {
-      pos->getSpeed();
+      pos->updatePosition();
 
       motors.setSpeeds(150,150);  
-      if (pos->speedBoth > hr.firstRun) {
-        hr.firstRun = pos->speedBoth;
+      if (pos->speed > hr.firstRun) {
+        hr.firstRun = pos->speed;
       }
-      Serial.print(">hr1:");
-      Serial.println(pos->speedBoth);
+      // Serial.print(">hr1:");
+      // Serial.println(pos->speed);
     
-    } while (millis() - now < 2000); 
-    motors.setSpeeds(0,0);
-    delay(1000);
-    pos->getSpeed();
+    } while (millis() - now < 9000); 
+
+    now = millis();
+
+    do {
+      pos->updatePosition();
+      motors.setSpeeds(0,0);
+
+    } while (millis() - now < 1000);
+
+
+    
+    
     now = millis();
     hr.secondRun = 0;
     do {
-      pos->getSpeed();
+      pos->updatePosition();
 
       motors.setSpeeds(50,150);  
 
-      if (pos->speedBoth > hr.secondRun) {
-        hr.secondRun = pos->speedBoth;
+      if (pos->speed > hr.secondRun) {
+        hr.secondRun = pos->speed;
       }
-      Serial.print(">hr2:");
-      Serial.println(pos->speedBoth);
+      // Serial.print(">hr2:");
+      // Serial.println(pos->speed);
 
     } while (millis() - now < 2000); 
     snprintf_P(speeds1, sizeof(speeds1), PSTR("%2d speed1"), hr.firstRun);
@@ -321,7 +429,7 @@ void loop()
 
 
 
-  if (battery->state == CHARGING) {
+  if (battery->state == STATE_CHARGING) {
     motors.setSpeeds(0,0);
   }
   //update();
