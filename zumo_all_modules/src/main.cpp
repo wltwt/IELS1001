@@ -13,6 +13,8 @@
 // diameter: 39mm
 
 #define AVERAGE_INTERVAL 2000               // ms
+#define FULL_CHARGE 100
+#define PERCENT_OF_MAX 200  
 
 enum BatteryState {
   STATE_CHARGING, 
@@ -44,13 +46,71 @@ void displayView(char topScreen[16], char bottomScreen[16]) {
   display.print(F("       "));
 }
 
+
+struct Battery {
+  BatteryState state = STATE_DISCHARGING;
+  int16_t CHARGE_CONSTANT = 10;
+  int16_t battery_level;
+  uint16_t battery_cycles;
+  int16_t battery_health;
+
+  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {
+    checkCurrentState();
+  }
+
+  Battery() : battery_cycles() {
+    checkCurrentState();
+    getEEPROM();
+  }
+
+  void discharging(int16_t distance, int16_t avgVelocity) {
+    Serial.print(">batterycalculating:");
+    Serial.println(distance + avgVelocity);
+    Serial.print(">batterycalculating*10:");
+    Serial.println( (distance + avgVelocity) * 10);
+    Serial.print(">batterycalculating/1000:");
+    Serial.println((distance + avgVelocity)/5000);
+    
+    battery_level = 100 - ((distance + avgVelocity)*10) / 5000;
+    
+  }
+
+  void charging() {
+    if (battery_level <= FULL_CHARGE) {
+      battery_level += CHARGE_CONSTANT;
+    }
+  }
+
+  void checkCurrentState() {
+    if (IR_CHARGING) {
+      state = STATE_CHARGING;
+    }
+  }
+
+  BatteryState getCurrentState() {
+    return state;
+  }
+
+  // setter som private, vil unngå unødvendig tilgang til EEPROM
+  private:
+    void getEEPROM() {
+      // EEPROM.get(bLevel, battery_cycles);
+      battery_level = FULL_CHARGE;
+    }
+};
+
+
+Battery *battery = NULL;  // oppretter kun pointer
+
+
+
 struct Position {
   // ordne slik at alt som har med posisjon og hastighet skjer her
   int32_t distance;
   int16_t speed, maxSpeed;
-  int16_t previousAverageDistance = 0, averageVelocity = 0, speedTimer = 0;
-  uint32_t timeAbove = 0;
-  unsigned long prev;
+  int16_t previousAverageDistance = 0, averageVelocity = 0, timeBelow = 0, timeAboveTotal = 0;
+  int32_t timeAbove = 0, totalTimeAbove = 0;
+  unsigned long prev, speedTimer, belowTimer, aboveTimer;
 
   struct Encoder {
     int16_t left, right;                                       // encoder count
@@ -104,6 +164,9 @@ struct Position {
 
         // pi * 39mm * encoderLeft * 10 / x cpr (mm)
         distance += (((enc.countL+enc.countR)/2) * 1225)/9097;
+        battery->discharging(distance, averageVelocity);
+        Serial.print(">battery_level:");
+        Serial.println(battery->battery_level);
 
         char encoderRPM[10], distance_thing[10];
         snprintf_P(encoderRPM, sizeof(encoderRPM), PSTR("0,%2d m/s"), speed);
@@ -112,7 +175,7 @@ struct Position {
       } else {
         speed = 0;
       }
-      getAverageVelocity();
+      generateStats();
     }
 
     void getSpeed(int16_t s) {
@@ -125,12 +188,10 @@ struct Position {
       }
     }
 
-    void getAverageVelocity() {
+    void generateStats() {
       uint16_t now = micros();
       Serial.print(">speed:");
       Serial.println(speed);
-      // Serial.print(">averagevelo:");
-      // Serial.println(averageVelocity);
 
       // bilen står stille
       if (now - enc.lastUpdate > 5000){
@@ -141,27 +202,42 @@ struct Position {
         
         // bilen beveger seg
       } else {
-
-        // Serial.print(">millis - prev:");
-        // Serial.println(millis() - prev);
-        if (millis() - prev > AVERAGE_INTERVAL) {
-          unsigned long now = millis();
+        unsigned long now = millis();
+        if (now - prev > AVERAGE_INTERVAL) {
           prev = now;
           speedTimer = now;
-          timeAbove = 0;
-
-        // Serial.print(">millis - prev:");
-        // Serial.println(millis() - prev);
+          aboveTimer = 0;
           averageVelocity = (distance - previousAverageDistance) / 2;
           previousAverageDistance = distance;
+          totalTimeAbove = 0;
+        }
+        
+        getMaxSpeed(speed);
+
+        if (speed > PERCENT_OF_MAX) {
+          if (now - aboveTimer > AVERAGE_INTERVAL) {
+            aboveTimer = now;
+            timeAbove = now - speedTimer;
+            totalTimeAbove += timeBelow - timeAbove;
+            belowTimer = 0;
+          }
+        } else {
+          if (now - belowTimer > AVERAGE_INTERVAL) {
+            belowTimer = now;
+            timeBelow = now - speedTimer;
+            totalTimeAbove += timeBelow - timeAbove;
+            aboveTimer = 0;
+          }
         }
 
-        if (speed > 200) {
-          timeAbove += millis() - speedTimer;
-
-          Serial.print(">TimeAbove:");
-          Serial.println(timeAbove);
-        } 
+        // Serial.print(">TimeAboveTotalStart:");
+        // Serial.println(timeAboveTotal);
+        // Serial.print(">Totaltimeabove:");
+        // Serial.println(totalTimeAbove);
+        // Serial.print(">abovetimer:");
+        // Serial.println(timeAbove);
+        // Serial.print(">belowtimer:");
+        // Serial.println(timeBelow);
       }
     }
 
@@ -172,41 +248,7 @@ struct Position {
 
 };
 
-struct Battery {
-  BatteryState state = STATE_DISCHARGING;
-  int16_t battery_level;
-  uint16_t battery_cycles;
-  int16_t battery_health;
 
-  Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {
-    checkCurrentState();
-  }
-
-  Battery() : battery_cycles() {
-    checkCurrentState();
-    getEEPROM();
-  }
-
-  void discharging(int16_t distance) {
-    battery_level -= distance / 1000;
-  }
-
-  void checkCurrentState() {
-    if (IR_CHARGING) {
-      state = STATE_CHARGING;
-    }
-  }
-
-  BatteryState getCurrentState() {
-    return state;
-  }
-
-  // setter som private, vil unngå unødvendig tilgang til EEPROM
-  private:
-    void getEEPROM() {
-      EEPROM.get(bLevel, battery_cycles);
-    }
-};
 
 struct Account {
   int16_t ID;
@@ -215,7 +257,6 @@ struct Account {
 
 };
 
-Battery *battery = NULL;  // oppretter kun pointer
 Position *pos = NULL;
 
 struct Highest
@@ -354,15 +395,15 @@ void loop()
       // Serial.print(">hr1:");
       // Serial.println(pos->speed);
     
-    } while (millis() - now < 9000); 
+    } while (millis() - now < 1500); 
 
     now = millis();
 
     do {
       pos->updatePosition();
-      motors.setSpeeds(0,0);
+      motors.setSpeeds(100,100);
 
-    } while (millis() - now < 1000);
+    } while (millis() - now < 2000);
 
 
     
@@ -372,7 +413,7 @@ void loop()
     do {
       pos->updatePosition();
 
-      motors.setSpeeds(50,150);  
+      motors.setSpeeds(300,300);  
 
       if (pos->speed > hr.secondRun) {
         hr.secondRun = pos->speed;
