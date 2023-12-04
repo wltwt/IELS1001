@@ -1,8 +1,9 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
-// #include "Adafruit_HTU21DF.h"
 #include <SoftwareSerial.h>
+#include <ArduinoJson.h>
+
 
 #define LIGHT_SENSOR_PIN_01 A0
 #define LIGHT_SENSOR_PIN_02 A1
@@ -16,6 +17,7 @@
 // Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 
 SoftwareSerial sws(RXpin,TXpin);
+StaticJsonDocument<40> doc;
 
 int16_t angle;
 
@@ -35,6 +37,8 @@ int16_t darkest_node = 0;
 int16_t map_01;
 int16_t servo_01_position = 90;
 int16_t servo_02_position = 90;
+float effect_output;
+float temp;
 
 float servo_01_position_float = 90;
 
@@ -91,7 +95,7 @@ void subtractPosition(Servos s)
   }
 }
 
-void updateNodes() 
+void updateLightNodes() 
 {
   light_nodes[0].value = analogRead(LIGHT_SENSOR_PIN_04);
   light_nodes[1].value = analogRead(LIGHT_SENSOR_PIN_03);
@@ -101,7 +105,8 @@ void updateNodes()
 
 void makeNodes()
 {
-  for (int i = 0; i < NODE_ARRAY_SIZE; i++) {
+  for (int i = 0; i < NODE_ARRAY_SIZE; i++) 
+  {
     light_nodes[i].index = i;
   }
 }
@@ -182,12 +187,43 @@ void positionServosPID()
 
 }
 
-float totalPowerProduced(float temperature) {
+float totalPowerProduced(float temperature) 
+{
   float total = 0;
-  for (int i = 0; i < NODE_ARRAY_SIZE; i++) {
+
+  for (int i = 0; i < NODE_ARRAY_SIZE; i++) 
+  {
     total += light_nodes[i].value; 
   }
-  return (total / 4) * (0.3 * temperature);
+
+  // gi mindre effekt med -0.3C for hver grad over 25
+  if (temperature > 25.0) 
+  {
+    return (total / 4) * (1 - ( (temperature - 25) * 0.03));
+  }
+  else
+  {
+    return total / 4;
+  }
+}
+
+void getEffect() 
+{
+  String sw_receive = "";
+  if (sws.available() > 0) 
+  {
+    sw_receive = sws.readStringUntil('\n');
+    temp = sw_receive.toFloat();
+  }
+
+  // effect_output = totalPowerProduced(temp);
+  // Serial.println(effect_output);
+}
+
+
+void solarCellLifeSpan() 
+{
+
 }
 
 
@@ -203,28 +239,41 @@ void setup()
 }
 
 
-void loop() {
-  updateNodes();
+void loop() 
+{
+  updateLightNodes();
   getExtremes();
+  // getEffect();
+
   if (millis() - timer > 30)
   {
     timer = millis();
     // positionServos();
     // positionServosPID();
   }
-  String swReceive = "";
 
-  if (sws.available() > 0) {
-    swReceive = sws.readStringUntil('\n');
-    Serial.println(swReceive);
+  int16_t weight = analogRead(SCALE_PIN);
+
+  // // String wp = (String)effect_output;
+  // if (sws.available() > 0) {
+  //   String json = sws.readStringUntil('\n'); 
+  //   Serial.println(json);
+  // }
+
+  DeserializationError error = deserializeJson(doc, sws);
+
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.f_str());
+    return;
   }
 
-  float temp = swReceive.toFloat();
-  int16_t weight = analogRead(SCALE_PIN);
-  String wp = (String)totalPowerProduced(temp);
-
-  Serial.println("Watts produced: " + wp);
-
+  float temp = doc["temp"];
+  float humidity = doc["humidity"];
+  // effect_output = totalPowerProduced(temp);
+  Serial.println("Humidity: " + (String)humidity);
+  Serial.println("Temmperature: " + (String)temp);
+  // Serial.println(effect_output);
   delay(100);
 
 
