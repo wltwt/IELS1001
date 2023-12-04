@@ -53,6 +53,7 @@ struct Battery {
   int16_t battery_level;
   uint16_t battery_cycles;
   int16_t battery_health;
+  int16_t discharge_factor;
 
   Battery(int bCycles, int bHealth) : battery_cycles(bCycles), battery_health(bHealth) {
     checkCurrentState();
@@ -248,6 +249,7 @@ struct Position {
 
 };
 
+Position *pos = NULL;
 
 
 struct Account {
@@ -257,7 +259,6 @@ struct Account {
 
 };
 
-Position *pos = NULL;
 
 struct Highest
 {
