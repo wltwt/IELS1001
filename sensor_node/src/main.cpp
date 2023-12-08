@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
-#include <SoftwareSerial.h>
+// #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
+#include <EEPROM.h>
+#include <SPI.h>
 
 
 #define LIGHT_SENSOR_PIN_01 A0
@@ -11,12 +13,13 @@
 #define LIGHT_SENSOR_PIN_04 A3
 #define SCALE_PIN A4
 #define NODE_ARRAY_SIZE 4
-#define RXpin 3
-#define TXpin 2
+#define HUMIDITY_ARRAY_SIZE 50
+// #define RXpin 4
+// #define TXpin 2
 
 // Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 
-SoftwareSerial sws(RXpin,TXpin);
+// SoftwareSerial sws(RXpin,TXpin);
 StaticJsonDocument<40> doc;
 
 int16_t angle;
@@ -39,14 +42,19 @@ int16_t servo_01_position = 90;
 int16_t servo_02_position = 90;
 float effect_output;
 float temp;
-
+float humidity;
 float servo_01_position_float = 90;
+
+// get from eeprom
+float solar_panel_health = 100;
+
+
 
 
 enum Servos 
 {
-  servo1 = 9,
-  servo2 = 10  
+  servo1 = 5,
+  servo2 = 6  
 };
 
 // lys-sensor node
@@ -149,11 +157,13 @@ void positionServos()
       subtractPosition(servo1);
       addPosition(servo2);
     }
-    else if (1 == brightest_node && 2 == darkest_node) {
+    else if (1 == brightest_node && 2 == darkest_node) 
+    {
       addPosition(servo1);
       subtractPosition(servo2);
     }
-    else if (0 == brightest_node && 3 == darkest_node) {
+    else if (0 == brightest_node && 3 == darkest_node) 
+    {
       subtractPosition(servo1);
       addPosition(servo2);
     }
@@ -169,7 +179,8 @@ void positionServosPID()
 
 
   // servo_01_position_float = 180 - (map(light_nodes[0].value + light_nodes[1].value, 0, 2046, 0, 180));
-  if (light_nodes[0].value - light_nodes[1].value > 60) {
+  if (light_nodes[0].value - light_nodes[1].value > 60)
+  {
     servo_01_position_float = 90 - 0.8*error;
   }
   int16_t n1 = light_nodes[0].value;
@@ -209,45 +220,117 @@ float totalPowerProduced(float temperature)
 
 void getEffect() 
 {
-  String sw_receive = "";
-  if (sws.available() > 0) 
-  {
-    sw_receive = sws.readStringUntil('\n');
-    temp = sw_receive.toFloat();
-  }
+  // String sw_receive = "";
+  // if (sws.available() > 0) 
+  // {
+    // sw_receive = sws.readStringUntil('\n');
+    // temp = sw_receive.toFloat();
+  // }
 
   // effect_output = totalPowerProduced(temp);
   // Serial.println(effect_output);
 }
 
 
-void solarCellLifeSpan() 
+void updateSolarCellLifeSpan(float humidity) 
 {
+  static float average_readings[HUMIDITY_ARRAY_SIZE];
+  static byte count = 0;
+  static unsigned long solar_call_timer = 0;
 
-}
+  if ( (millis() - solar_call_timer > 10))
+  {
+    solar_call_timer = millis(); 
+    average_readings[count] = humidity;
 
+    count++;
+
+    Serial.println(count);
+    if (HUMIDITY_ARRAY_SIZE == count)
+    {
+      float average_total_readings;
+
+      for (int i = 0; i < HUMIDITY_ARRAY_SIZE; i++) 
+      {
+        average_total_readings += average_readings[i];
+      }
+
+      average_total_readings = average_total_readings / HUMIDITY_ARRAY_SIZE;
+
+      if (average_total_readings > 0)
+      {
+        solar_panel_health -= average_total_readings * 0.001;
+        // write ee-prom?
+        Serial.println(solar_panel_health);
+      }
+
+
+      // EEPROM.put(0x00, solar_panel_health);
+      count = 0;
+    }
+  }
+} 
+
+volatile byte dataReceived;
+// volatile bool data_received = false;
 
 void setup()
 {
   Serial.begin(9600);
-  pinMode(RXpin, INPUT);
-  pinMode(TXpin, OUTPUT);
-  servo_01.attach(9);
-  servo_02.attach(6);
-  makeNodes();
-  sws.begin(300);
+
+  // Serial.begin(9600);
+  // pinMode(RXpin, INPUT);
+  // pinMode(TXpin, OUTPUT);
+  // servo_01.attach(servo1);
+  // servo_02.attach(servo2);
+  // makeNodes();
+
+  pinMode(MISO, OUTPUT);
+
+  SPI.begin();
+
+  SPI.attachInterrupt();
+  // sws.begin(8000);
+}
+
+byte respondSPI(byte data_received)
+{
+  return data_received + 1;
+}
+
+ISR (SPI_STC_vect) {
+  dataReceived = SPDR;
+  SPDR = respondSPI(dataReceived);
 }
 
 
 void loop() 
 {
-  updateLightNodes();
-  getExtremes();
+  // Serial.println(data_received);
+  // updateLightNodes();
+  // getExtremes();
   // getEffect();
+  // delay(1000);
 
-  if (millis() - timer > 30)
+  // if (data_received) 
+  // {
+    // Serial.begin(9600);
+    // Serial.println(received);
+    // Serial.end();
+    // data_received = false;
+  // }
+
+  if (millis() - timer > 100)
   {
     timer = millis();
+    // Serial.println(received);
+      // timer = millis();
+      // DeserializationError error = deserializeJson(doc, sws);
+      // if (error) {
+      // Serial.print(F("deserializeJson() failed: "));
+      // Serial.println(error.f_str());
+      // return;
+      // }
     // positionServos();
     // positionServosPID();
   }
@@ -260,21 +343,24 @@ void loop()
   //   Serial.println(json);
   // }
 
-  DeserializationError error = deserializeJson(doc, sws);
+  
 
-  if (error) {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.f_str());
-    return;
-  }
+  // if (error) {
+  //   Serial.print(F("deserializeJson() failed: "));
+  //   Serial.println(error.f_str());
+  //   return;
+  // }
 
-  float temp = doc["temp"];
-  float humidity = doc["humidity"];
+  // temp = doc["temp"];
+  // humidity = doc["humidity"];
   // effect_output = totalPowerProduced(temp);
-  Serial.println("Humidity: " + (String)humidity);
-  Serial.println("Temmperature: " + (String)temp);
+  // Serial.println("Humidity: " + (String)humidity);
+  // Serial.println("Temmperature: " + (String)temp);
   // Serial.println(effect_output);
-  delay(100);
+
+
+  // updateSolarCellLifeSpan(humidity);
+  // delay(100);
 
 
   // Serial.print(">brightestNode:");
