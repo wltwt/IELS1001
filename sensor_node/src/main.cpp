@@ -249,7 +249,7 @@ void updateSolarCellLifeSpan(float humidity)
         average_total_readings += average_readings[i];
       }
 
-      average_total_readings /= HUMIDITY_ARRAY_SIZE;
+      average_total_readings = average_total_readings / HUMIDITY_ARRAY_SIZE;
 
       if (average_total_readings > 0 && average_total_readings < 50)
       {
