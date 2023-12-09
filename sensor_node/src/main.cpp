@@ -51,8 +51,14 @@ float temp;
 float humidity;
 float servo_01_position_float = 90;
 
+float prev_powerProduced = 0;
+float power_produced;
+
+float average_readings[HUMIDITY_ARRAY_SIZE];
+
+
 // get from eeprom
-float solar_panel_health = 100;
+float solar_panel_health = 0.0f;
 
 
 
@@ -143,8 +149,7 @@ void getExtremes()
     darkest_node_value = light_nodes[darkest_node].value;
     brightest_node_value = light_nodes[brightest_node].value;
   }
-
-  Serial.println(">brightestNode:" + (String)brightest_node);
+  // Serial.println(">brightestNode:" + (String)brightest_node);
 }
 
 void positionServos() 
@@ -223,42 +228,38 @@ float totalPowerProduced(float temperature)
 
 void updateSolarCellLifeSpan(float humidity) 
 {
-  static float average_readings[HUMIDITY_ARRAY_SIZE];
   static byte count = 0;
-  static unsigned long solar_call_timer = 0;
+  static unsigned long solar_call_timer = 1000;
 
-  if ( (millis() - solar_call_timer > 10))
+  // sikring for EEPROM
+  if ( (millis() - solar_call_timer > 100))
   {
     solar_call_timer = millis(); 
     average_readings[count] = humidity;
 
     count++;
 
-    Serial.println(count);
+    Serial.println(">count: " + (String)count);
     if (HUMIDITY_ARRAY_SIZE == count)
     {
       float average_total_readings;
 
-      for (int i = 0; i < HUMIDITY_ARRAY_SIZE; i++) 
+      for (int i = 0; i < HUMIDITY_ARRAY_SIZE; i++)
       {
         average_total_readings += average_readings[i];
       }
 
-      average_total_readings = average_total_readings / HUMIDITY_ARRAY_SIZE;
+      average_total_readings /= HUMIDITY_ARRAY_SIZE;
 
-      if (average_total_readings > 0)
+      if (average_total_readings > 0 && average_total_readings < 50)
       {
-        solar_panel_health -= average_total_readings * 0.001;
-        // write ee-prom?
-        Serial.println(solar_panel_health);
+        solar_panel_health -= (average_total_readings * 0.001);
+        EEPROM.put(0x00, solar_panel_health);
       }
-
-
-      // EEPROM.put(0x00, solar_panel_health);
       count = 0;
     }
   }
-} 
+}
 
 
 void setup()
@@ -272,6 +273,13 @@ void setup()
   servo_01.attach(servo1);
   servo_02.attach(servo2);
   makeNodes();
+  // solar_panel_health = 100;
+
+  // EEPROM.put(0x0, solar_panel_health);
+  
+  
+  EEPROM.get(0x0, solar_panel_health);
+  // solar_panel_health = 100;
 
   htu.begin();
 
@@ -282,26 +290,25 @@ void loop()
 {
   updateLightNodes();
   getExtremes();
-  positionServos();
-  
-
-
-
 
   if (millis() - timer > 1000)
   {
-
     timer = millis();
-
-
     // unsigned long timeattack = micros();
-
-
-    // tar lang tid å lese temperatur og fuktighet ~100ms
+    // ~100ms på å lese
     float temp = htu.readTemperature();
     float rel_hum = htu.readHumidity();
+
+    updateSolarCellLifeSpan(temp);
     // timeattack = micros() - timeattack;
     // Serial.println(">Time:" + (String)timeattack);
+    
+    prev_powerProduced = power_produced;
+
+    power_produced = totalPowerProduced(temp);
+
+
+
 
     // Serial.println(received);
     // positionServos();
@@ -317,6 +324,18 @@ void loop()
     // Serial.println(">Weight: " + (String)weight);
 
   }
+
+  Serial.println(">powerProducedprevious: " + (String)(prev_powerProduced - power_produced));
+  Serial.println(">Health: " + (String)solar_panel_health);
+
+
+
+
+  // if (prev_powerProduced - power_produced >= 10); 
+  // {
+    positionServos();
+  // }
+
 
 
 
