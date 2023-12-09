@@ -16,7 +16,7 @@ enum Servos
 };
 
 // lys-sensor node
-struct Node
+struct LNode
 {
   uint16_t index;
   int16_t value;
@@ -25,16 +25,13 @@ struct Node
 
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 Servos e;
-Node light_nodes[NODE_ARRAY_SIZE];
+LNode light_nodes[NODE_ARRAY_SIZE];
 Servo servo_01;
 Servo servo_02;
 
-
-int16_t angle;
-
 // references:
 // https://www.electronics-lab.com/project/using-sg90-servo-motor-arduino/
-
+// https://docs.arduino.cc/learn/programming/eeprom-guide
 
 
 float error;
@@ -43,9 +40,8 @@ int16_t brightest_node = 0;
 int16_t brightest_node_value = 0;
 int16_t darkest_node_value = 0;
 int16_t darkest_node = 0;
-int16_t map_01;
-int16_t servo_01_position = 90;
-int16_t servo_02_position = 90;
+int16_t servo_01_position = 90;         // startposisjon servo 1
+int16_t servo_02_position = 90;         // startposisjon servo 2
 float effect_output;
 float temp;
 float humidity;
@@ -60,9 +56,7 @@ float average_readings[HUMIDITY_ARRAY_SIZE];
 // get from eeprom
 float solar_panel_health = 0.0f;
 
-
-
-
+// sjekker at posisjonen som blir lagt til ikke overstrider 180 grader
 void addPosition(Servos s)
 {
   if (s == servo1) 
@@ -81,6 +75,7 @@ void addPosition(Servos s)
   }
 }
 
+// sjekker at posisjonen som blir lagt til ikke overstrider 180 grader
 void subtractPosition(Servos s)  
 {
   if (s == servo1) 
@@ -109,6 +104,7 @@ void resetAll()
   delayMicroseconds(5);
 }
 
+// oppdaterer hver lys-nodeobjekt
 void updateLightNodes()
 {
   for (int i = 0; i < NODE_ARRAY_SIZE; i++)
@@ -119,6 +115,7 @@ void updateLightNodes()
   }
 }
 
+// setter index til lys-sensor objektene i et array av lys-sensor
 void makeNodes()
 {
   for (int i = 0; i < NODE_ARRAY_SIZE; i++) 
@@ -127,6 +124,7 @@ void makeNodes()
   }
 }
 
+// finner lyseste og mørkeste sensor
 void getExtremes()
 {
   brightest_node_value = light_nodes[0].value;
@@ -152,6 +150,7 @@ void getExtremes()
   // Serial.println(">brightestNode:" + (String)brightest_node);
 }
 
+// endrer posisjon basert på hvilke lys-sensorer som er mørkest/lysest
 void positionServos() 
 {
   if (brightest_node_value - darkest_node_value > 50) 
@@ -181,11 +180,10 @@ void positionServos()
   }
 }
 
+// fungerer ikke enda
 void positionServosPID() 
 {
-
   error = map(light_nodes[0].value - light_nodes[1].value, -512, 512, -90, 90);
-
 
   // servo_01_position_float = 180 - (map(light_nodes[0].value + light_nodes[1].value, 0, 2046, 0, 180));
   if (light_nodes[0].value - light_nodes[1].value > 60)
@@ -274,17 +272,11 @@ void setup()
   servo_02.attach(servo2);
   makeNodes();
   // solar_panel_health = 100;
-
   // EEPROM.put(0x0, solar_panel_health);
-  
-  
+
   EEPROM.get(0x0, solar_panel_health);
-  // solar_panel_health = 100;
-
   htu.begin();
-
 } 
-
 
 void loop() 
 {
@@ -294,52 +286,22 @@ void loop()
   if (millis() - timer > 1000)
   {
     timer = millis();
-    // unsigned long timeattack = micros();
     // ~100ms på å lese
     float temp = htu.readTemperature();
-    float rel_hum = htu.readHumidity();
+    float humidity = htu.readHumidity();
 
-    updateSolarCellLifeSpan(temp);
-    // timeattack = micros() - timeattack;
-    // Serial.println(">Time:" + (String)timeattack);
-    
+    updateSolarCellLifeSpan(humidity);
     prev_powerProduced = power_produced;
-
     power_produced = totalPowerProduced(temp);
-
-
-
-
-    // Serial.println(received);
-    // positionServos();
-    // positionServosPID();
     int16_t weight = analogRead(SCALE_PIN);
-
-    // Serial.println(">1 Node value: " + (String)light_nodes[0].value);
-    // Serial.println(">2 Node value: " + (String)light_nodes[1].value);
-    // Serial.println(">3 Node value: " + (String)light_nodes[2].value);
-    // Serial.println(">4 Node value: " + (String)light_nodes[3].value);
-
-    // Serial.println(">Temmperature: " + (String)temp);
-    // Serial.println(">Weight: " + (String)weight);
-
+    // Serial.println(">1 LNode value: " + (String)light_nodes[0].value);
+    // Serial.println(">2 LNode value: " + (String)light_nodes[1].value);
+    // Serial.println(">3 LNode value: " + (String)light_nodes[2].value);
+    // Serial.println(">4 LNode value: " + (String)light_nodes[3].value);
   }
 
   Serial.println(">powerProducedprevious: " + (String)(prev_powerProduced - power_produced));
   Serial.println(">Health: " + (String)solar_panel_health);
 
-
-
-
-  // if (prev_powerProduced - power_produced >= 10); 
-  // {
-    positionServos();
-  // }
-
-
-
-
-  // effect_output = totalPowerProduced(temp);
-  // updateSolarCellLifeSpan(humidity);
-  // delay(100);
+  positionServos();
 }
