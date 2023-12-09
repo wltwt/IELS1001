@@ -4,14 +4,30 @@
 #include <EEPROM.h>
 #include "Adafruit_HTU21DF.h"
 
-
-
 #define LIGHT_SENSOR_PIN A0
 #define SCALE_PIN A1
 #define NODE_ARRAY_SIZE 4
 #define HUMIDITY_ARRAY_SIZE 50
 
+enum Servos 
+{
+  servo1 = 10,
+  servo2 = 9  
+};
+
+// lys-sensor node
+struct Node
+{
+  uint16_t index;
+  int16_t value;
+};
+
+
 Adafruit_HTU21DF htu = Adafruit_HTU21DF();
+Servos e;
+Node light_nodes[NODE_ARRAY_SIZE];
+Servo servo_01;
+Servo servo_02;
 
 
 int16_t angle;
@@ -19,8 +35,6 @@ int16_t angle;
 // references:
 // https://www.electronics-lab.com/project/using-sg90-servo-motor-arduino/
 
-Servo servo_01;
-Servo servo_02;
 
 
 float error;
@@ -43,23 +57,7 @@ float solar_panel_health = 100;
 
 
 
-enum Servos 
-{
-  servo1 = 5,
-  servo2 = 6  
-};
-
-// lys-sensor node
-struct Node
-{
-  uint16_t index;
-  int16_t value;
-};
-
-Servos e;
-Node light_nodes[NODE_ARRAY_SIZE];
-
-void addPosition(Servos s) 
+void addPosition(Servos s)
 {
   if (s == servo1) 
   {
@@ -97,51 +95,22 @@ void subtractPosition(Servos s)
 
 void resetAll() 
 {
-  delay(2);
-  digitalWrite(2, LOW);
-  digitalWrite(3, LOW);
-  digitalWrite(4, LOW);
-  digitalWrite(5, LOW);
-  delay(2);
+  delayMicroseconds(5);
+  for (int i = 0; i < NODE_ARRAY_SIZE; i++)
+  {
+    digitalWrite(i+2, LOW);
+  }
+  delayMicroseconds(5);
 }
 
-void updateLightNodes() 
+void updateLightNodes()
 {
-  resetAll();
-  digitalWrite(2, HIGH);
-
-  int a = map(-80,1023,0,1023,analogRead(A0));
-  
-  delay(10);
-
-  resetAll();
-  digitalWrite(3, HIGH);
-  int b = map(-80,1023,0,1023,analogRead(A0));
-
-  delay(10);
-
-  resetAll();
-  digitalWrite(4, HIGH);
-
-  int c = map(-80,1023,0,1023,analogRead(A0));
-  
-  delay(10);
-
-  resetAll();
-  digitalWrite(5, HIGH);
-  int d = map(-80,1023,0,1023,analogRead(A0));
-
-  Serial.println(">Analogread a(2):" + (String)a);
-  Serial.println(">Analogread b(3):" + (String)b);
-  Serial.println(">Analogread c(4):" + (String)c);
-  Serial.println(">Analogread d(5):" + (String)d);
-
-  delay(10);
-
-  light_nodes[0].value = a;
-  light_nodes[1].value = b;
-  light_nodes[2].value = c;
-  light_nodes[3].value = d;
+  for (int i = 0; i < NODE_ARRAY_SIZE; i++)
+  {
+    resetAll();
+    digitalWrite(i+2, HIGH);
+    light_nodes[i].value = map(-70,1023,0,1023,analogRead(LIGHT_SENSOR_PIN));
+  }
 }
 
 void makeNodes()
@@ -174,11 +143,13 @@ void getExtremes()
     darkest_node_value = light_nodes[darkest_node].value;
     brightest_node_value = light_nodes[brightest_node].value;
   }
+
+  Serial.println(">brightestNode:" + (String)brightest_node);
 }
 
 void positionServos() 
 {
-  if (brightest_node_value - darkest_node_value > 60) 
+  if (brightest_node_value - darkest_node_value > 50) 
   {
     if (3 == brightest_node && 0 == darkest_node) 
     {
@@ -214,7 +185,7 @@ void positionServosPID()
   // servo_01_position_float = 180 - (map(light_nodes[0].value + light_nodes[1].value, 0, 2046, 0, 180));
   if (light_nodes[0].value - light_nodes[1].value > 60)
   {
-    servo_01_position_float = 90 - 0.8*error;
+    servo_01_position_float = 90 - 0.8 * error;
   }
   int16_t n1 = light_nodes[0].value;
   int16_t n2 = light_nodes[1].value;
@@ -228,7 +199,6 @@ void positionServosPID()
   Serial.println(n1);
   Serial.print(">node 1:");
   Serial.println(n2);
-
 }
 
 float totalPowerProduced(float temperature) 
@@ -250,20 +220,6 @@ float totalPowerProduced(float temperature)
     return total / 4;
   }
 }
-
-void getEffect() 
-{
-  // String sw_receive = "";
-  // if (sws.available() > 0) 
-  // {
-    // sw_receive = sws.readStringUntil('\n');
-    // temp = sw_receive.toFloat();
-  // }
-
-  // effect_output = totalPowerProduced(temp);
-  // Serial.println(effect_output);
-}
-
 
 void updateSolarCellLifeSpan(float humidity) 
 {
@@ -312,8 +268,7 @@ void setup()
   pinMode(3, OUTPUT);
   pinMode(4, OUTPUT);
   pinMode(5, OUTPUT);
-  // pinMode(RXpin, INPUT);
-  // pinMode(TXpin, OUTPUT);
+
   servo_01.attach(servo1);
   servo_02.attach(servo2);
   makeNodes();
@@ -325,54 +280,47 @@ void setup()
 
 void loop() 
 {
-  // updateLightNodes();
-  // getExtremes();
-  // getEffect();
-  // delay(1000);
+  updateLightNodes();
+  getExtremes();
+  positionServos();
+  
 
 
 
-  if (millis() - timer > 100)
+
+  if (millis() - timer > 1000)
   {
+
     timer = millis();
+
+
+    // unsigned long timeattack = micros();
+
+
+    // tar lang tid å lese temperatur og fuktighet ~100ms
     float temp = htu.readTemperature();
     float rel_hum = htu.readHumidity();
-  
+    // timeattack = micros() - timeattack;
+    // Serial.println(">Time:" + (String)timeattack);
+
     // Serial.println(received);
     // positionServos();
     // positionServosPID();
     int16_t weight = analogRead(SCALE_PIN);
 
-    Serial.println(">Humidity: " + (String)rel_hum);
-    Serial.println(">Temmperature: " + (String)temp);
-    Serial.println(">Weight: " + (String)weight);
+    // Serial.println(">1 Node value: " + (String)light_nodes[0].value);
+    // Serial.println(">2 Node value: " + (String)light_nodes[1].value);
+    // Serial.println(">3 Node value: " + (String)light_nodes[2].value);
+    // Serial.println(">4 Node value: " + (String)light_nodes[3].value);
+
+    // Serial.println(">Temmperature: " + (String)temp);
+    // Serial.println(">Weight: " + (String)weight);
 
   }
 
 
 
-
   // effect_output = totalPowerProduced(temp);
-
-
-
   // updateSolarCellLifeSpan(humidity);
   // delay(100);
-
-
-  // Serial.print(">brightestNode:");
-  // Serial.println(brightest_node);
-  // Serial.print(">brightestnodevalue:");
-  // Serial.println(brightest_node_value);
-  // Serial.print(">darkestnode:");
-  // Serial.println(darkest_node);
-  // Serial.print(">darkest node value:");
-  // Serial.println(darkest_node_value);
-  // Serial.print(">servo_position:");
-  // Serial.println(servo_01_position);
-  
-
-  // Serial.print(">read_05_servo:");
-  // Serial.println(servo_01.read());
-
 }
