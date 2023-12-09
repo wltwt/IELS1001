@@ -1,26 +1,18 @@
 #include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
-// #include <SoftwareSerial.h>
-#include <ArduinoJson.h>
 #include <EEPROM.h>
-#include <SPI.h>
+#include "Adafruit_HTU21DF.h"
 
 
-#define LIGHT_SENSOR_PIN_01 A0
-#define LIGHT_SENSOR_PIN_02 A1
-#define LIGHT_SENSOR_PIN_03 A2
-#define LIGHT_SENSOR_PIN_04 A3
-#define SCALE_PIN A4
+
+#define LIGHT_SENSOR_PIN A0
+#define SCALE_PIN A1
 #define NODE_ARRAY_SIZE 4
 #define HUMIDITY_ARRAY_SIZE 50
-// #define RXpin 4
-// #define TXpin 2
 
-// Adafruit_HTU21DF htu = Adafruit_HTU21DF();
+Adafruit_HTU21DF htu = Adafruit_HTU21DF();
 
-// SoftwareSerial sws(RXpin,TXpin);
-StaticJsonDocument<40> doc;
 
 int16_t angle;
 
@@ -103,12 +95,53 @@ void subtractPosition(Servos s)
   }
 }
 
+void resetAll() 
+{
+  delay(2);
+  digitalWrite(2, LOW);
+  digitalWrite(3, LOW);
+  digitalWrite(4, LOW);
+  digitalWrite(5, LOW);
+  delay(2);
+}
+
 void updateLightNodes() 
 {
-  light_nodes[0].value = analogRead(LIGHT_SENSOR_PIN_04);
-  light_nodes[1].value = analogRead(LIGHT_SENSOR_PIN_03);
-  light_nodes[2].value = analogRead(LIGHT_SENSOR_PIN_02);
-  light_nodes[3].value = analogRead(LIGHT_SENSOR_PIN_01);
+  resetAll();
+  digitalWrite(2, HIGH);
+
+  int a = map(-80,1023,0,1023,analogRead(A0));
+  
+  delay(10);
+
+  resetAll();
+  digitalWrite(3, HIGH);
+  int b = map(-80,1023,0,1023,analogRead(A0));
+
+  delay(10);
+
+  resetAll();
+  digitalWrite(4, HIGH);
+
+  int c = map(-80,1023,0,1023,analogRead(A0));
+  
+  delay(10);
+
+  resetAll();
+  digitalWrite(5, HIGH);
+  int d = map(-80,1023,0,1023,analogRead(A0));
+
+  Serial.println(">Analogread a(2):" + (String)a);
+  Serial.println(">Analogread b(3):" + (String)b);
+  Serial.println(">Analogread c(4):" + (String)c);
+  Serial.println(">Analogread d(5):" + (String)d);
+
+  delay(10);
+
+  light_nodes[0].value = a;
+  light_nodes[1].value = b;
+  light_nodes[2].value = c;
+  light_nodes[3].value = d;
 }
 
 void makeNodes()
@@ -271,92 +304,56 @@ void updateSolarCellLifeSpan(float humidity)
   }
 } 
 
-volatile byte dataReceived;
-// volatile bool data_received = false;
 
 void setup()
 {
   Serial.begin(9600);
-
-  // Serial.begin(9600);
+  pinMode(2, OUTPUT);
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(5, OUTPUT);
   // pinMode(RXpin, INPUT);
   // pinMode(TXpin, OUTPUT);
-  // servo_01.attach(servo1);
-  // servo_02.attach(servo2);
-  // makeNodes();
+  servo_01.attach(servo1);
+  servo_02.attach(servo2);
+  makeNodes();
 
-  pinMode(MISO, OUTPUT);
+  htu.begin();
 
-  SPI.begin();
-
-  SPI.attachInterrupt();
-  // sws.begin(8000);
-}
-
-byte respondSPI(byte data_received)
-{
-  return data_received + 1;
-}
-
-ISR (SPI_STC_vect) {
-  dataReceived = SPDR;
-  SPDR = respondSPI(dataReceived);
-}
+} 
 
 
 void loop() 
 {
-  // Serial.println(data_received);
   // updateLightNodes();
   // getExtremes();
   // getEffect();
   // delay(1000);
 
-  // if (data_received) 
-  // {
-    // Serial.begin(9600);
-    // Serial.println(received);
-    // Serial.end();
-    // data_received = false;
-  // }
+
 
   if (millis() - timer > 100)
   {
     timer = millis();
+    float temp = htu.readTemperature();
+    float rel_hum = htu.readHumidity();
+  
     // Serial.println(received);
-      // timer = millis();
-      // DeserializationError error = deserializeJson(doc, sws);
-      // if (error) {
-      // Serial.print(F("deserializeJson() failed: "));
-      // Serial.println(error.f_str());
-      // return;
-      // }
     // positionServos();
     // positionServosPID();
+    int16_t weight = analogRead(SCALE_PIN);
+
+    Serial.println(">Humidity: " + (String)rel_hum);
+    Serial.println(">Temmperature: " + (String)temp);
+    Serial.println(">Weight: " + (String)weight);
+
   }
 
-  int16_t weight = analogRead(SCALE_PIN);
 
-  // // String wp = (String)effect_output;
-  // if (sws.available() > 0) {
-  //   String json = sws.readStringUntil('\n'); 
-  //   Serial.println(json);
-  // }
 
-  
 
-  // if (error) {
-  //   Serial.print(F("deserializeJson() failed: "));
-  //   Serial.println(error.f_str());
-  //   return;
-  // }
-
-  // temp = doc["temp"];
-  // humidity = doc["humidity"];
   // effect_output = totalPowerProduced(temp);
-  // Serial.println("Humidity: " + (String)humidity);
-  // Serial.println("Temmperature: " + (String)temp);
-  // Serial.println(effect_output);
+
 
 
   // updateSolarCellLifeSpan(humidity);
