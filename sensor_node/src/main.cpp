@@ -1,3 +1,9 @@
+// kilder
+// https://www.electronics-lab.com/project/using-sg90-servo-motor-arduino/
+// https://docs.arduino.cc/learn/programming/eeprom-guide
+// https://arduinojson.org/v6/example/generator/
+
+
 #include <Arduino.h>
 #include <Servo.h>
 #include <Wire.h>
@@ -12,11 +18,11 @@
 #define TEMP_ARRAY_SIZE 50
 #define ONE_SECOND_MS 1000
 
-
+// holder styr på hvilken servo som er hvor
 enum Servos 
 {
   first_servo = 10,
-  second_servo = 9  
+  second_servo = 9
 };
 
 enum LDRpin
@@ -38,24 +44,25 @@ LDRnode light_nodes[NODE_ARRAY_SIZE];
 Servo servo_one;
 Servo servo_two;
 
-// references:
-// https://www.electronics-lab.com/project/using-sg90-servo-motor-arduino/
-// https://docs.arduino.cc/learn/programming/eeprom-guide
-
-
-float error;
+float errorx;
+float errory;
 unsigned long timer = 0;
 unsigned long update_LDR_timer = 0;
+int16_t previous_positionx;
+int16_t previous_positiony;
 int16_t brightest_node = 0;
 int16_t brightest_node_value = 0;
 int16_t darkest_node_value = 0;
 int16_t darkest_node = 0;
 int16_t first_servo_position = 90;         // startposisjon servo 1
 int16_t second_servo_position = 90;         // startposisjon servo 2
+int16_t solar_panel_pressure;
+
 float effect_output;
 float temp;
 float humidity;
 float servo_one_position_float = 90;
+float servo_two_position_float = 90;
 
 float prev_powerProduced = 0;
 float power_produced;
@@ -112,7 +119,6 @@ void subtractPosition(Servos s)
       servo_two.write(second_servo_position);
     }
   }
-  
 }
 
 /*
@@ -141,6 +147,8 @@ void updateLightNodes()
   {
     resetAll();
     digitalWrite(i+2, HIGH);
+
+    // måtte bruke map siden ADC'en fikk litt mindre utslag med denne type krets
     light_nodes[i].value = map(-70,1023,0,1023,analogRead(LIGHT_SENSOR_PIN));
   }
 }
@@ -158,7 +166,7 @@ void makeNodes()
 }
 
 /*
-*  finn hvilken lys-sensor som gir høyest
+*  finn hvilken lys-sensor som gir mest
 *  og minst utslag
 */
 
@@ -191,7 +199,7 @@ void getExtremes()
 *  lys-sensor som er lysest og mørkest
 */
 
-void positionServos() 
+void positionServos()
 {
   if (brightest_node_value - darkest_node_value > 50) 
   {
@@ -218,28 +226,41 @@ void positionServos()
   }
 }
 
-// fungerer ikke enda
-void positionServosPID() 
+/*
+*  Samme effekt som funksjon over bare litt raskere.
+*/
+
+void positionServosSlightlyBetter() 
 {
-  error = map(light_nodes[0].value - light_nodes[1].value, -512, 512, -90, 90);
-
-  // servo_one_position_float = 180 - (map(light_nodes[0].value + light_nodes[1].value, 0, 2046, 0, 180));
-  if (light_nodes[0].value - light_nodes[1].value > 60)
+  errorx = map(light_nodes[0].value - light_nodes[1].value, -512, 512, -20, 20);
+  errory = map(light_nodes[3].value - light_nodes[2].value, -512, 512, -20, 20);
+ 
+  if (abs(errorx) > 3)
   {
-    servo_one_position_float = 90 - 0.8 * error;
+    float test_new_position = previous_positionx - (0.5 * errorx);
+    
+    if (abs((test_new_position - previous_positionx) < 20 && test_new_position <= 180 && test_new_position >= 0))
+    {
+      servo_one_position_float = test_new_position;
+    }
   }
-  int16_t n1 = light_nodes[0].value;
-  int16_t n2 = light_nodes[1].value;
 
+  if (abs(errory) > 2)
+  {
+    float test_new_position = previous_positiony - (0.8 * errory);
+    
+    if (abs((test_new_position - previous_positiony) < 20) && test_new_position <= 180 && test_new_position >= 0)
+    {
+      servo_two_position_float = test_new_position;
+    }
+  }
 
   servo_one.write((int)servo_one_position_float);
+  servo_two.write((int)servo_two_position_float);
 
-  Serial.print(">error:");
-  Serial.println(error);
-  Serial.print(">node 0:");
-  Serial.println(n1);
-  Serial.print(">node 1:");
-  Serial.println(n2);
+  previous_positionx = servo_one_position_float;
+  previous_positiony = servo_two_position_float;
+
 }
 
 /*
@@ -251,7 +272,7 @@ float totalPowerProduced(float temperature)
 {
   float total = 0;
 
-  for (int i = 0; i < NODE_ARRAY_SIZE; i++) 
+  for (int i = 0; i < NODE_ARRAY_SIZE; i++)
   {
     total += light_nodes[i].value; 
   }
@@ -259,11 +280,11 @@ float totalPowerProduced(float temperature)
   // gi mindre effekt med -0.3C for hver grad over 25
   if (temperature > 25.0) 
   {
-    return (total / 4) * (1 - ( (temperature - 25) * 0.03));
+    return ((total / 4) * (1 - ((temperature - 25) * 0.03)) * ( (1023 - (float)solar_panel_pressure) / 1023));
   }
   else
   {
-    return total / 4;
+    return (total / 4) * ( (1023 - (float)solar_panel_pressure ) / 1023);
   }
 }
 
@@ -272,7 +293,7 @@ float totalPowerProduced(float temperature)
 *  på gjennomsnittet av de 50 siste avlesningene.
 */
 
-void updateSolarCellLifeSpan(float humidity, float temperature) 
+void updateSolarCellLifeSpan(float humidity) 
 {
   static byte count = 0;
   static unsigned long solar_call_timer = ONE_SECOND_MS;
@@ -380,10 +401,10 @@ void checkPressure(int16_t pressure)
 *  send info til dashboard
 */
 
-void sendData(float temp, float humidity)
+void sendData()
 {
-  static unsigned long tmr = 10000;
-  if (millis() - tmr > 10000)
+  static unsigned long tmr = 2000;
+  if (millis() - tmr > 2000)
   {
     tmr = millis();
     StaticJsonDocument<200> doc;
@@ -391,6 +412,8 @@ void sendData(float temp, float humidity)
     doc["humidity"] = humidity;
     doc["health_level"] = solar_panel_health;
     doc["power_produced"] = power_produced;
+    doc["time_seconds"] = millis()/1000;
+    doc["pressure"] = solar_panel_pressure;
 
     String json;
     serializeJson(doc, json);
@@ -402,6 +425,8 @@ void sendData(float temp, float humidity)
 void setup()
 {
   Serial.begin(9600);
+
+  // setter digitale I/O porter som brukes til lesing av LDR til utgang
   for (int pin = first_pin; pin <= last_pin; pin++)
   {
     pinMode(pin, OUTPUT);
@@ -423,9 +448,13 @@ void loop()
   if (millis() - update_LDR_timer > 50)
   {
     update_LDR_timer = millis();
+    
+    solar_panel_pressure = analogRead(SCALE_PIN);
+
     updateLightNodes();
     getExtremes();
-    positionServos();
+    // positionServos();
+    positionServosSlightlyBetter();
   }
 
   if (millis() - timer > ONE_SECOND_MS)
@@ -435,14 +464,13 @@ void loop()
     temp = htu.readTemperature();
     humidity = htu.readHumidity();
     
-    updateSolarCellLifeSpan(humidity, temp);
+    updateSolarCellLifeSpan(humidity);
     prev_powerProduced = power_produced;
     power_produced = totalPowerProduced(temp);
     
-    int16_t solar_panel_pressure = analogRead(SCALE_PIN);
     checkPressure(solar_panel_pressure);
   }
 
-  sendData(temp, humidity);
+  sendData();
 
 }
