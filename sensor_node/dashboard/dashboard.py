@@ -5,8 +5,6 @@
 # https://docs.python.org/3/library/queue.html
 # https://tkdocs.com/tutorial/intro.html
 
-# ide hent strømpriser fra nett å se hvor mye penger vi genererer
-
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 import numpy as np

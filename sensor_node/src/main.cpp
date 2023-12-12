@@ -122,8 +122,7 @@ void subtractPosition(Servos s)
 }
 
 /*
-*  oppdaterer globale server-posisjon verdier
-*  sørger for at 180 grader ikke blir overstridd
+*  sett digitalporter som brukes til avlesing av lys-sensorene lav
 */
 
 void resetAll() 
@@ -137,8 +136,7 @@ void resetAll()
 }
 
 /*
-*  oppdaterer globale server-posisjon verdier
-*  sørger for at 180 grader ikke blir overstridd
+*  les av en og en sensorverdi
 */
 
 void updateLightNodes()
@@ -334,7 +332,7 @@ void updateSolarCellLifeSpan(float humidity)
 *  bevegelse for å få av det som skaper trykket (snø f.eks)
 */
 
-void checkPressure(int16_t pressure) 
+void checkPressure(int16_t pressure)
 {
   int16_t first_servo_temp_position = first_servo_position;
   int16_t second_servo_temp_position = second_servo_position;
