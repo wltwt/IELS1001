@@ -4,6 +4,7 @@
 # https://pythonassets.com/posts/background-tasks-with-tk-tkinter/
 # https://docs.python.org/3/library/queue.html
 # https://tkdocs.com/tutorial/intro.html
+# https://matplotlib.org/stable/gallery/user_interfaces/embedding_in_tk_sgskip.html
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt

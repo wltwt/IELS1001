@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "temperature_node",
+			"path": "../../temperature_node"
+		},
+		{
+			"name": "temp_reader",
+			"path": "../../temp_reader"
+		}
+	],
+	"settings": {}
+}
